@@ -55,8 +55,16 @@ Each rejected rep is printed with its clock ranges and decoded reasons. If the r
 
 ### Deviation flag
 
-Accepted reps more than 0.5% from the median are listed under the result, and every result reports the spread between the fastest and slowest accepted rep. The 0.5% threshold is a guess, not a measured noise floor. [TODO: measure run-to-run variation (≥30 reps, clocks steady), set the threshold at 3σ, and record σ here.]
+Accepted reps more than 0.5% from the median are listed under the result, and every result reports the spread between the fastest and slowest accepted rep. The 0.5% threshold is a guess, not a measured noise floor. Accepted reps more than 0.2% from the median are listed under the result, and every result reports the spread between the fastest and slowest accepted rep. The threshold is measured: 30 reps of each baseline configuration, with the flag temporarily at 0 so every rep is printed ([results/noise.txt](../kernels/01_vector_add/results/noise.txt)). σ is estimated robustly, as 1.4826 × the median absolute deviation ([tools/sigma.py](../tools/sigma.py)).
 
+| Configuration | σ | 3σ | drift, first half vs second half |
+|---|---|---|---|
+| v0 naive | 0.011% | 0.034% | +0.008% |
+| v1 grid-stride, G = 768 | 0.070% | 0.209% | +0.012% |
+| v1 grid-stride, G = 102,400 | 0.005% | 0.014% | −0.003% |
+| v2 `float4` | 0.014% | 0.041% | −0.006% |
+
+The flag sits at 3σ of the noisiest configuration, so normal noise never triggers it. Drift is below σ everywhere, so the spread is noise, not heating. G = 768 is the outlier, consistent with its 5.33 waves: with few, long-running blocks, when the last partial wave finishes varies from rep to rep (not confirmed). This is noise within one process; between processes the buffers' physical placement changes, which this measurement doesn't cover.
 ## Byte counts are measured, not assumed
 
 GB/s is bytes moved divided by time, and "bytes moved" is a model. Before a kernel's bandwidth is reported, its byte model is checked against DRAM counters:

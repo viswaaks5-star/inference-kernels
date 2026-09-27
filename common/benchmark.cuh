@@ -30,7 +30,7 @@ struct BenchConfig {
     int rep_warmup = 25;            // launches before each rep; clocks are already steady
     int poll_ms = 5;                // NVML sampling interval inside a rep; <= 0 samples start and end only
     double sm_spread_tol = 0.02;    // reject a rep whose SM clock moved by more than 2%
-    double deviation_flag = 0.005;  // flag accepted reps more than 0.5% from the median (not yet calibrated)
+    double deviation_flag = 0.002;  // flag accepted reps more than 0.5% from the median (not yet calibrated)
     // Warm-up ramp: launch until the SM clock stops moving.
     double ramp_sample_ms = 20.0;   // one SM clock sample per 20 ms of launches
     int ramp_window = 10;           // the last 10 samples (200 ms)...
