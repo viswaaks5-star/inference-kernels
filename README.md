@@ -33,7 +33,7 @@ The inference engine these kernels feed into will live in its own repository.
 
 ## Hardware
 
-NVIDIA GeForce RTX 4060 Laptop GPU: AD107, sm_89, 24 SMs, 128-bit GDDR6, 32 MiB L2 · CUDA [TODO] · driver [TODO] · [TODO: OS]
+NVIDIA GeForce RTX 4060 Laptop GPU: AD107, sm_89, 24 SMs, 128-bit GDDR6, 32 MiB L2 · CUDA 13.1 · driver 610.74 · Ubuntu 26.04 LTS under WSL2 (Windows host)
 
 Every results file begins with a header the program prints itself (CUDA and driver versions, OS, memory clock against NVML's maximum, resident blocks), so the line above can be copied from any of them.
 
@@ -50,8 +50,8 @@ Full rules: [docs/methodology.md](docs/methodology.md). Notebook format: [docs/e
 Requires the CUDA toolkit (11.8+ for sm_89) and NVML (the header ships with the toolkit, the library with the driver).
 
 ```bash
-git clone git@github.com:[TODO]/cuda-kernels.git
-cd cuda-kernels
+git clone https://github.com/viswaaks5-star/inference-kernels.git
+cd inference-kernels
 make                          # builds every kernel for the local GPU
 ./bin/01_vector_add           # baseline; see the kernel's README for every mode
 ```

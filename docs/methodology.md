@@ -101,7 +101,7 @@ The memory line records the power mode indirectly: 8201 against an NVML maximum 
 
 **Metric names fail silently.** A misspelled metric returns `n/a` with no error. The separator between unit and quantity is a double underscore: `dram__bytes.sum`, not `dram_bytes.sum`.
 
-**Memory safety is checked once per kernel** with `compute-sanitizer ./bin/<kernel> --profile`. Buffer-shift experiments write near the ends of their allocations, which is exactly what it catches. [TODO: run and record a clean result.]
+**Memory safety is checked once per kernel** with `compute-sanitizer ./bin/<kernel> --profile`. Buffer-shift experiments write near the ends of their allocations, which is exactly what it catches. For 01,memcheck reports 0 errors across all six profile launches, including the largest shift ('c' + 64 Kib, which ends exactly at the end of its padding ). Under WSL2 the tool needs the Windows GPU debugger interface enabled (registry value `HKLM\SOFTWARE\NVIDIA Corporation\GPUDebugger\EnableInterface` = 1). Without it, the tool fails to attach but still prints an error summary, which looks like a result and isn't 
 
 **Evidence is committed as text.** Harness output, `ncu` console output and SASS dumps live in each kernel's `results/` directory. Binary `.ncu-rep` files are not committed: they are megabytes each and stay in git history permanently. Export the part a claim depends on.
 

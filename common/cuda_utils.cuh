@@ -71,6 +71,7 @@ inline double peak_bandwidth_gbs(unsigned mem_mhz, int bus_bits) {
 }
 
 inline void print_device(const DeviceInfo& d) {
+    std::printf("GIT_SHA: %s \n",GIT_SHA);
     std::printf("device   : %s (sm_%d%d, %d SMs, %d threads/SM)\n",
                 d.name, d.major, d.minor, d.sm_count, d.max_threads_per_sm);
     std::printf("memory   : %d-bit bus, L2 %.1f MiB\n",

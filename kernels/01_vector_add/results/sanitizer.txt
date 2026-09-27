@@ -1,0 +1,17 @@
+========= COMPUTE-SANITIZER
+GIT_SHA: 3e5f02d 
+device   : NVIDIA GeForce RTX 4060 Laptop GPU (sm_89, 24 SMs, 1536 threads/SM)
+memory   : 128-bit bus, L2 32.0 MiB
+software : CUDA runtime 13.1, driver 610.74 (supports CUDA 13.3)
+os       : Ubuntu 26.04 LTS, kernel 6.6.114.1-microsoft-standard-WSL2
+clocks   : memory 7001 MHz at startup (NVML max 8001 MHz), SM max 3105 MHz
+resident : blocks/SM v0 6, v1 6, v2 6 at 256 threads/block (144, 144, 144 on the GPU)
+problem  : n = 67108864 floats, 256.0 MiB per array, 805.3 MB moved per launch, buffers padded by 64 KiB for shifts
+mode     : --profile, clocks sampled every 5 ms inside each rep
+profile launch 1: v0_naive
+profile launch 2: v1_grid_stride G=102400
+profile launch 3: v2_vec4
+profile launch 4: v0_naive b+128B c+256B
+profile launch 5: swizzle S=2^3
+profile launch 6: v0_naive b+32768B c+65536B
+========= ERROR SUMMARY: 0 errors
