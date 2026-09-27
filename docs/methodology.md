@@ -74,6 +74,8 @@ Accepted reps more than 0.5% from the median are listed under the result, and ev
 | v2 `float4` | 0.014% | 0.041% | −0.006% |
 
 The flag sits at 3σ of the noisiest configuration, so normal noise never triggers it. Drift is below σ everywhere, so the spread is noise, not heating. G = 768 is the outlier, consistent with its 5.33 waves: with few, long-running blocks, when the last partial wave finishes varies from rep to rep (not confirmed). This is noise within one process; between processes the buffers' physical placement changes, which this measurement doesn't cover.
+The calibrated flag earned its place on first use. In the offset sweeps it exposed reps that sit in one of two discrete states, ~3.27 and ~3.44 ms, within a single configuration ([01, R8](../kernels/01_vector_add/EXPERIMENTS.md#r8-offset-sweep-three-fresh-processes)). When reps split like that, the median reports whichever state held for at least four of seven reps, and only the flagged-rep list shows the other.
+
 ## Byte counts are measured, not assumed
 
 GB/s is bytes moved divided by time, and "bytes moved" is a model. Before a kernel's bandwidth is reported, its byte model is checked against DRAM counters:
@@ -82,7 +84,7 @@ GB/s is bytes moved divided by time, and "bytes moved" is a model. Before a kern
 ncu --metrics dram__bytes_read.sum,dram__bytes_write.sum ...
 ```
 
-For vector add, the model (3N: read `a` and `b`, write `c`) matched reads to 0.04%. Writes came in 5% low in a single profiled launch because dirty lines are still resident in the 32 MiB L2 when the kernel ends. Across back-to-back launches, each launch's leftovers are written back during the next, so steady-state traffic is 3N. Details: [01, E1](../kernels/01_vector_add/EXPERIMENTS.md#e1-is-traffic-really-3n).
+For vector add, the model (3N: read `a` and `b`, write `c`) matched reads to within 0.06% in every profiled configuration. Writes came in 5% low in a single profiled launch because dirty lines are still resident in the 32 MiB L2 when the kernel ends. Across back-to-back launches, each launch's leftovers are written back during the next, so steady-state traffic is 3N. Details: [01, E1](../kernels/01_vector_add/EXPERIMENTS.md#e1-is-traffic-really-3n).
 
 ## Two ceilings
 
@@ -98,6 +100,7 @@ The gap between the two is refresh, bus turnaround and memory-controller overhea
 Each run begins with a header, printed by the program itself:
 
 ```
+GIT_SHA: <commit the binary was built from>
 device   : NVIDIA GeForce RTX 4060 Laptop GPU (sm_89, 24 SMs, 1536 threads/SM)
 memory   : 128-bit bus, L2 32.0 MiB
 software : CUDA runtime X.Y, driver NNN.NN (supports CUDA X.Y)
@@ -106,7 +109,7 @@ clocks   : memory 8201 MHz at startup (NVML max 8001 MHz), SM max NNNN MHz
 resident : blocks/SM v0 6, v1 6, v2 6 at 256 threads/block (144, 144, 144 on the GPU)
 ```
 
-The memory line records the power mode indirectly: 8201 against an NVML maximum of 8001 means turbo. All output goes to stdout. Save runs with `2>&1 | tee` so errors land in the same file.
+The clocks line is read at startup, before any load, when the GPU may still be idle: it has read 7001 MHz in turbo mode. The memory clock in each result line, sampled during the timed reps, is the one to trust; 8201 against an NVML maximum of 8001 means turbo. All output goes to stdout. Save runs with `2>&1 | tee` so errors land in the same file.
 
 ## Profiling rules
 
@@ -114,7 +117,7 @@ The memory line records the power mode indirectly: 8201 against an NVML maximum 
 
 **`--profile` launches each configuration once**, in a fixed order, so `ncu --launch-count 6` profiles each exactly once. Timing loops would otherwise make ncu replay thousands of launches. The last configuration uses the largest buffer shift, so the same mode serves the memory-safety check below.
 
-**Nsight Compute pins the SM clock.** By default (`--clock-control base`) it locks the SM clock, to 1545 MHz on this machine, for the whole profiled process, including kernels it isn't profiling. The harness keeps timing normally, so any profiling session doubles as a clock-sensitivity test. That side effect produced the strongest single experiment in 01 ([E4](../kernels/01_vector_add/EXPERIMENTS.md#e4-does-the-deficit-live-in-the-sm-accidental)).
+**Nsight Compute can pin the SM clock, but not here.** By default (`--clock-control base`) it locks the SM clock for the whole profiled process, including kernels it isn't profiling, while the harness keeps timing normally. In the original setup that pinned 1545 MHz and produced the strongest single experiment in 01 ([E4](../kernels/01_vector_add/EXPERIMENTS.md#e4-does-the-deficit-live-in-the-sm-accidental)). Under WSL2 it does not: every rep under Nsight Compute ran at 2715–2730 MHz ([01, R4](../kernels/01_vector_add/EXPERIMENTS.md#r4-e4-in-one-session)). Clock-sensitivity experiments now lock the clock from the Windows host ([limitations](#limitations)), and the SM clock column in every result line shows which clock actually applied.
 
 **Metric names fail silently.** A misspelled metric returns `n/a` with no error. The separator between unit and quantity is a double underscore: `dram__bytes.sum`, not `dram_bytes.sum`.
 
@@ -128,9 +131,7 @@ Facts about the test machine that every kernel inherits. How each was establishe
 
 ### Memory clock is constant under load
 
-NVML polled every ~0.6 s through idle (10.5 W, 39 °C) and sustained load (56 W, 60 °C) read 8201 MHz in every sample. The per-rep reading is defensive on this machine, since nothing has moved the memory clock yet. It stays, because on battery, under thermal stress or on another GPU something would.
-
-[ATTACH: evidence/clock_idle_vs_load.txt]
+NVML polled every 0.5 s through idle (1.2–10.7 W, 42 °C), a baseline run (51–60 W, up to 53 °C) and cool-down read 8200–8201 MHz throughout, and exactly 8201 MHz under load ([evidence/clock_idle_vs_load.txt](evidence/clock_idle_vs_load.txt)). The exception is the start of a run after the GPU has been idle: the first rep can begin at 7001 MHz and step up to 8201 inside it. The per-rep check rejected two such reps during the regeneration ([01, R3](../kernels/01_vector_add/EXPERIMENTS.md#r3-rep-0-after-a-cold-start)), so it stays.
 
 ### Turbo mode sets the memory clock above NVML's maximum
 
@@ -147,17 +148,15 @@ The +200 MHz is a vendor runtime offset that the driver honours but the VBIOS P-
 
 The data had flagged this before the mode toggle confirmed it. Against the 8001 MHz peak (256.0 GB/s), the best vector add would sit at 96.6% of theoretical, high enough for a read-and-write stream on GDDR6 to make the smaller denominator suspect.
 
-[ATTACH: evidence/power_mode_toggle.txt]
+*Raw output not preserved.*
 
 ### SM clock ramp
 
-From idle, the SM clock needs roughly 0.5 s of sustained load to reach steady state (1890 → ~2730 MHz). Fixed warm-ups of 200–400 ms left rep 0 rejected in every run; ~500 ms cleared it. That measurement is why warm-up is now convergence-based rather than timed.
-
-[ATTACH: evidence/warmup_sweep.txt]
+From idle, the SM clock needs roughly 0.5–1 s of sustained load to reach steady state (1890 → ~2730 MHz), and it climbs through intermediate values: 2415 MHz appears in the idle-to-load log above. Fixed warm-ups of 200–400 ms left rep 0 rejected in every run of the earlier harness, which is why warm-up is now convergence-based. Convergence has its own failure: after idle it can settle on an intermediate clock (2040–2115 MHz seen), hold it long enough to pass the 1%-for-200-ms test, and rep 0 is then rejected as the clock keeps climbing ([01, R3](../kernels/01_vector_add/EXPERIMENTS.md#r3-rep-0-after-a-cold-start)). The rejection gate catches it; no reported median includes such a rep.
 
 ### Clock-event reasons
 
-Under sustained vector-add load NVML reports no reasons (`0x0`). At idle it reports `GpuIdle` (`0x1`). [TODO: run the baseline under Nsight Compute and record the decoded reason the harness now prints. Expected: `ApplicationsClocksSetting`, the profiler's own clock lock.]
+Under sustained load NVML reports no reasons (`0x0`). At idle it reports `GpuIdle` (`0x1`). Under Nsight Compute in WSL2 no clock-setting reason appears, because Nsight Compute doesn't set the clock here ([01, R4](../kernels/01_vector_add/EXPERIMENTS.md#r4-e4-in-one-session)). Under a lock set from the Windows host with `nvidia-smi -lgc`, the harness reports `GpuIdle` on every result line rather than `ApplicationsClocksSetting`, so a lock is visible only in the SM clock column. `GpuIdle` also appears inconsistently in unlocked runs; it is reported, never used to reject.
 
 ## Limitations
 
@@ -165,6 +164,8 @@ Under sustained vector-add load NVML reports no reasons (`0x0`). At idle it repo
 - **DRAM latency is assumed**, ~500 ns, wherever Little's Law is applied. It is not measured; a pointer-chase microbenchmark would measure it.
 - **No bank- or row-level DRAM counters** are exposed on this GPU, so effects below the memory-partition level are inferred, not observed.
 - **NVML sampling runs on the host.** A clock excursion shorter than the 5 ms sampling interval can be missed.
+- **WSL2.** The Windows driver (WDDM) owns the GPU. Windows' video memory manager decides where buffers physically live, and clock locking, debugger access for compute-sanitizer and profiler clock control all go through the Windows host. Effects that depend on physical placement may differ on native Linux.
+- **One machine.** Nothing here is claimed to transfer to another GPU.
 
 ## Reporting checklist
 

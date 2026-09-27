@@ -4,19 +4,19 @@ CUDA kernels for LLM inference, written from scratch and measured on a laptop GP
 
 Each kernel directory is a lab notebook: a short README with the finding, and an `EXPERIMENTS.md` with the model I wrote before measuring, each hypothesis and what it predicted, what the hardware said, and what went wrong. Falsified hypotheses stay in.
 
-## Latest finding: [01 vector add](kernels/01_vector_add/)
+## Latest finding: [01 vector add](kernels/01_vector_add)
 
-Grid-stride vector add beat the naive kernel by 6% (247.4 vs 232.9 GB/s). Instruction overhead, memory-level parallelism, coalescing and wave quantization were each ruled out. The gap turned out to belong to neither kernel. With the naive kernel untouched, offsetting two of its three buffers by 128 and 256 bytes takes it from 233 to 246 GB/s: it was paying a buffer-placement penalty, and grid-stride sidestepped it through the order in which it touches memory. Every penalty-free configuration lands at ~247 GB/s, 94.1% of theoretical peak. [Full investigation →](kernels/01_vector_add/EXPERIMENTS.md)
+In the original runs, grid-stride vector add beat the naive kernel by 6% (247.4 vs 232.9 GB/s), and the gap turned out to belong to neither kernel: with the naive kernel untouched, shifting two of its three buffers by 128 and 256 bytes took it from 233 to 246 GB/s. It was paying a buffer-placement penalty. Regenerated with the current harness, the penalty reproduces exactly where it was found (234.4 GB/s at a 256/512-byte shift, in three of three fresh processes), but the default placement no longer lands on it, so naive and grid-stride now tie at ~247 GB/s, 94% of theoretical peak. Within one process, some placements start slow and switch to full speed seconds later, with nothing in the program changed. [Full investigation →](kernels/01_vector_add/EXPERIMENTS.md)
 
 ## Why start with bandwidth
 
-At batch size 1, generating each token streams every weight through the memory system once. Decode is a bandwidth problem before it is anything else. On this card, 2.5 GB of fp16 weights (about 1.2B parameters) caps batch-1 decode near 247 ÷ 2.5 ≈ 100 tokens/s, before KV-cache reads. Knowing the real ceiling, and what quietly costs 6% of it, comes before writing a GEMV or an attention kernel.
+At batch size 1, generating each token streams every weight through the memory system once. Decode is a bandwidth problem before it is anything else. On this card, 2.5 GB of fp16 weights (about 1.2B parameters) caps batch-1 decode near 247 ÷ 2.5 ≈ 100 tokens/s, before KV-cache reads. Knowing the real ceiling, and what quietly costs 5% of it, comes before writing a GEMV or an attention kernel.
 
 ## Kernels
 
 | # | Kernel | Bound by | Result | Status |
 |---|---|---|---|---|
-| 01 | [vector add](kernels/01_vector_add/) | DRAM bandwidth | ceiling ~247 GB/s (94.1%); naive's 6% deficit traced to buffer placement | done |
+| 01 | [vector add](kernels/01_vector_add/) | DRAM bandwidth | ceiling ~247 GB/s (94%); a ~5% penalty tied to relative buffer placement | done |
 | 02 | reduction | DRAM bandwidth | | next |
 | 03 | GEMV (decode) | DRAM bandwidth | | |
 | 04 | RMSNorm | DRAM bandwidth | | |
@@ -56,7 +56,7 @@ make                          # builds every kernel for the local GPU
 ./bin/01_vector_add           # baseline; see the kernel's README for every mode
 ```
 
-CI compiles for sm_75, sm_86 and sm_89. GitHub's runners have no GPU, so it proves the code builds; every number comes from the machine above.
+Every number comes from the machine above.
 
 ## License
 

@@ -2,10 +2,7 @@
 
 The full investigation behind the [summary](README.md): the model I built before measuring, every experiment with its hypothesis and prediction, what each one could and could not distinguish, and what went wrong. Format: [docs/experiment-format.md](../../docs/experiment-format.md) .
 
-> [TODO: every number below was produced by an earlier version of the harness, before the fixes
-> in this commit (clock sampling inside the timed region, convergence-based warm-up, true median,
-> `__restrict__` on v0). Regenerate with the commands in [README.md](README.md#reproduce), update
-> every number, then delete this note.]
+> **Status.** Parts I and II record the investigation as it happened, with an earlier version of the harness; their raw logs were not preserved. [Part III](#part-iii-regeneration) regenerates every experiment with the current harness in the current environment, with every raw log in [results/](results/). Where the two disagree, Part III is current.
 
 ## Reading guide
 
@@ -19,6 +16,7 @@ The full investigation behind the [summary](README.md): the model I built before
 - [Part 0: the model, before measuring](#part-0-the-model-before-measuring)
 - [Part I: making the measurement trustworthy](#part-i-making-the-measurement-trustworthy) (M1–M4)
 - [Part II: explaining the gap](#part-ii-explaining-the-gap) (E1–E8)
+- [Part III: regeneration](#part-iii-regeneration) (R1–R8)
 - [Conclusion](#conclusion)
 - [Hypothesis ledger](#hypothesis-ledger)
 - [Threats to validity](#threats-to-validity)
@@ -30,6 +28,8 @@ The full investigation behind the [summary](README.md): the model I built before
 - [How this was done](#how-this-was-done)
 
 ## Summary
+
+**Update after regeneration ([Part III](#part-iii-regeneration)).** Rerun with the current harness in the current environment, the headline gap does not reproduce: naive now reaches 246.5 GB/s against grid-stride's 247.1. The penalty behind it does reproduce, exactly where it was found: shifting `b` and `c` by 256 and 512 bytes gives 234.4 GB/s, the same value as before, in three of three fresh processes. What changed is that the default placement no longer lands on it. The regeneration also found the penalty switching off partway through a run, with nothing in the program changed. The original investigation follows.
 
 I wrote three versions of vector add (naive, grid-stride, `float4`) and predicted all three would land near the bandwidth ceiling. Grid-stride beat naive by 6% (247.4 vs 232.9 GB/s), and I set out to explain why.
 
@@ -140,23 +140,23 @@ A 2.3-point spread in the headline number, larger than some of the effects this 
 
 **Prediction.** If so, `nvidia-smi` shows different memory clocks at idle and under sustained load.
 
-**Setup.** `nvidia-smi` polled about every 0.6 s, first idle, then under sustained vector add, then while cooling down.
+**Setup.** `nvidia-smi` polled every 0.5 s, first idle, then during the baseline, then while cooling down. The original log was not preserved; the table is from the rerun.
 
 **Result.**
 
-| State | Memory | SM | Power | Temperature | Clock-event reasons |
-|---|---|---|---|---|---|
-| idle | 8201 MHz | 1890 MHz | 10.5 W | 39 °C | `0x1` GpuIdle |
-| sustained load | 8201 MHz | 2715 MHz | 56.3 W | 60 °C | `0x0` none |
-| cooling down | 8201 MHz | 1890 MHz | 10.9 W | 56 °C | `0x1` GpuIdle |
+| State | Memory | SM | Power | Temperature |
+| --- | --- | --- | --- | --- |
+| idle | 8200–8201 MHz | 1890 MHz | 1.2–10.7 W | 42 °C |
+| sustained load | 8201 MHz | 2715–2730 MHz | 51–60 W | 45–53 °C |
+| cooling down | 8200–8201 MHz | 1890 MHz | 1.2–10.6 W | 51 °C |
 
-[ATTACH: ../../docs/evidence/clock_idle_vs_load.txt]
+[docs/evidence/clock_idle_vs_load.txt](../../docs/evidence/clock_idle_vs_load.txt)
 
-**Verdict.** Falsified on this machine: the memory clock never moved. The SM clock is what moves. Under load NVML reports no throttle reasons at all, so the measurement conditions are clean: 56 W and 60 °C are far from this GPU's limits.
+**Verdict.** Falsified under sustained load: the memory clock never moved while the kernel ran. The SM clock is what moves. The harness reports no clock-event reasons under load ([results/baseline.txt](results/baseline.txt)), and 51–60 W at 53 °C is far from this GPU's limits.
 
-The per-rep reading stays anyway. On battery, under thermal stress or on another GPU, the memory clock could move, and a harness that assumes otherwise fails silently.
+The per-rep reading stays, and it has since earned its place: after the GPU sits idle, the first rep of a run can start with the memory clock at 7001 MHz and step up to 8201 inside the rep. The harness rejected two such reps during the regeneration ([R3](#r3-rep-0-after-a-cold-start)).
 
-An idle memory clock of 8201 MHz is unusual: most GPUs drop memory to a few hundred MHz when idle. A display attached to the GPU is the likely reason; I haven't confirmed it.
+The idle rows alternate between 8201 MHz at ~10.6 W and 8200 MHz at exactly 1.20 W, and the 1.20 W samples arrive ~0.9 s apart instead of 0.5 s. That is consistent with the GPU powering down between samples, the 10.6 W rows being moments it was woken to answer; not confirmed. It replaces an earlier guess that an attached display held the idle memory clock up.
 
 ### M3. Why 8201 MHz when the maximum is 8001?
 
@@ -173,7 +173,7 @@ An idle memory clock of 8201 MHz is unusual: most GPUs drop memory to a few hund
 | balanced | 8001 MHz | 8001 MHz |
 | turbo | 8201 MHz | 8001 MHz |
 
-[ATTACH: ../../docs/evidence/power_mode_toggle.txt]
+*Raw output not preserved.*
 
 **Verdict.** Supported. The +200 MHz is exactly a round offset, the signature of a configuration knob rather than measurement error. NVML's maximum comes from the VBIOS P-state table, which is static; the vendor's runtime offset never enters it. So NVML reports a current clock above its own maximum, and neither number is wrong.
 
@@ -191,13 +191,13 @@ The data had pointed here before the toggle confirmed it. Against the 8001 MHz p
 
 **Result.** Rep 0 was rejected at every setting up to 400 ms (~425 ms effective) and accepted at 500 ms (~510 ms effective).
 
-[ATTACH: ../../docs/evidence/warmup_sweep.txt]
+*Raw output from the fixed-warm-up harness not preserved; the current harness can't run a fixed warm-up.*
 
 **Verdict.** Supported. From idle, the SM clock needs roughly half a second under load to settle (1890 → ~2730 MHz).
 
 **What went wrong.** The next harness version used a fixed 480 ms warm-up, which is about 510 ms after batching: right at the edge of the threshold I had just measured. Rep 0 kept being rejected in most runs. A constant tuned to sit on a measured threshold is fragile by construction. It also encodes one machine's ramp as a number that is wrong on any other machine, or on this one when the GPU starts warm.
 
-**Next.** The current harness launches until the SM clock holds within 1% for 200 ms, and reports how long that took. [TODO: record whether rep 0 is still rejected after regeneration, and the reason the harness prints if so.]
+**Next.** The current harness launches until the SM clock holds within 1% for 200 ms, and reports how long that took. It doesn't fully: after the GPU has been idle, the warm-up can declare convergence on an intermediate clock, and rep 0 is still rejected ([R3](#r3-rep-0-after-a-cold-start)).
 
 ## Part II: explaining the gap
 
@@ -216,7 +216,7 @@ The data had pointed here before the toggle confirmed it. Against the 8001 MHz p
 | DRAM read | 536.87 MB | 537.10 MB | +0.04% |
 | DRAM write | 268.44 MB | 254.90 MB | −5.0% |
 
-[ATTACH: results/ncu.txt]
+*Raw log from the earlier harness not preserved; regenerated in [Part III](#part-iii-regeneration).*
 
 **Verdict.** Supported, for the steady state the harness measures.
 
@@ -241,7 +241,7 @@ The data had pointed here before the toggle confirmed it. Against the 8001 MHz p
 | v1 grid-stride, G = 768 | 3.2828 | 245.3 | 93.5% |
 | v2 `float4` | 3.3942 | 237.3 | 90.4% |
 
-[ATTACH: results/baseline.txt]
+*Raw log from the earlier harness not preserved; regenerated in [Part III](#part-iii-regeneration).*
 
 **Against the predictions.**
 
@@ -261,7 +261,7 @@ The data had pointed here before the toggle confirmed it. Against the 8001 MHz p
 
 **Result.** Peak of 247.4 GB/s (94.3%) at 102,400 blocks, declining above ~200,000.
 
-[ATTACH: results/grid_sweep.txt, as a table or plot]
+*Raw log from the earlier harness not preserved; regenerated in [Part III](#part-iii-regeneration).*
 
 **Verdict.** It looked supported. It was not a clean test.
 
@@ -294,9 +294,9 @@ Any of the three could produce this curve.
 | v2 | 3.3940 ms · 237.3 GB/s | 3.3949 ms · 237.2 GB/s | −0.04% |
 | v0 − v1 | 0.2024 ms | 0.1691 ms | shrank |
 
-[ATTACH: results/baseline.txt, results/clock_base.txt]
+*Raw log from the earlier harness not preserved; regenerated in [Part III](#part-iii-regeneration).*
 
-[TODO: rerun both clocks in one session with identical configurations and replace this table.]
+This table compares runs from different sessions. The same-session rerun is [R4](#r4-e4-in-one-session): Nsight Compute no longer pins the SM clock in the current setup, so the rerun locks it at 1545 MHz from the Windows host, and at the current default placement v0 is no longer clock-insensitive.
 
 **Verdict.** Falsified. A 43% cut in the SM clock left v0 unchanged, and the deficit shrank instead of growing to 0.36 ms. Whatever costs v0 its 6% does not slow down when the SM clock does.
 
@@ -354,13 +354,13 @@ The unrolled body with its eight loads never executes. Every thread runs the sca
 
 The block from `0x00a0` to `0x01e0` computes `n − i − 1` and divides it by the stride. The division exists because the stride is a runtime value and GPUs have no integer-divide instruction; the compiler synthesizes one from a floating-point reciprocal (`MUFU.RCP`), a refinement step and two conditional corrections. Every thread pays for those 21 instructions before issuing its first load.
 
-[ATTACH: results/sass.txt, regenerated from this commit]
+SASS of the current binary: [results/sass.txt](results/sass.txt). The instruction counts measured in [R5](#r5-profiler-counts) match this listing exactly.
 
 **Verdict.** Falsified twice. v0 and v1 keep identical bytes in flight, and the variant with the most is not the fastest.
 
 **What went wrong.** I recognised that SASS is a static listing and that execution depends on runtime trip counts. But I estimated that part of the unrolled body would run, for up to 24 bytes per thread. Tracing the guard shows the body is all-or-nothing, and at this grid size it is never entered.
 
-**Prediction still open.** From the SASS and the trip counts, v0 executes 16 instructions per warp, 33.55M in total. v1 executes 64 or 75, 57.48M in total ([A7](#a7-instruction-counts)). The faster kernel should execute 71% more instructions. [TODO: measure `smsp__inst_executed.sum` for both and record the result here, whether or not it matches.]
+**Prediction, then measurement.** From the SASS and the trip counts, v0 executes 16 instructions per warp, 33.55M in total. v1 executes 64 or 75, 57.48M in total ([A7](#a7-instruction-counts)). The faster kernel should execute 71% more instructions. **Measured** ([R5](#r5-profiler-counts)): v0 33,554,432 and v1 57,475,072, both exactly as predicted. The faster kernel executes 71% more instructions.
 
 **Next.** The two kernels execute different instructions and have the same memory parallelism. Do they present the memory system with the same requests (E6)?
 
@@ -374,13 +374,13 @@ The block from `0x00a0` to `0x01e0` computes `n − i − 1` and divides it by t
 
 **Result.** 16,777,216, exactly.
 
-[ATTACH: results/ncu.txt]
+*Raw log from the earlier harness not preserved; regenerated in [Part III](#part-iii-regeneration).*
 
 **Verdict.** Falsified. No sector is wasted.
 
 **What went wrong.** This was the only metric that survived its command. The other three names had typos (a single underscore where the grammar needs a double one, and "issus" for "issue"), and Nsight Compute returns `n/a` for an unknown metric instead of raising an error. The instrument failed silently, and it did so while I was trying to check another instrument.
 
-[TODO: record sectors per request from `l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum`, now in the profiling command. Expected: 4 for v0 and v1, 16 for v2.]
+Sectors per request, measured in [R5](#r5-profiler-counts): 4 for v0, v1 and the swizzle, 16 for v2, as expected ([A8](#a8-sectors-per-request)).
 
 **Next.** Instruction work, memory parallelism, coalescing and traffic are all ruled out as differences. What is left?
 
@@ -426,7 +426,7 @@ S = 1 is exactly v0. The only thing that changes is which addresses are concurre
 | 10 | 144 | 1 | 256 KiB | 3.2633 | 246.8 |
 | 16 | 144 | 1 | 4 KiB | 3.3197 | 242.6 |
 
-[ATTACH: results/swizzle_sweep.txt]
+*Raw log from the earlier harness not preserved; regenerated in [Part III](#part-iii-regeneration).*
 
 **Verdict.** Supported. Permuting blocks alone reproduces v1's full gain. The effect is a step between two and four clusters, flat across a 16× range of cluster counts. Holding 144 single-block clusters fixed and packing them 4 KiB apart instead of 256 KiB brings part of the penalty back.
 
@@ -457,7 +457,7 @@ S = 1 is exactly v0. The only thing that changes is which addresses are concurre
 
 In the OFF = 32 run one accepted rep sat 1.04% from the median; the other reps and runs stayed within 0.5%.
 
-[ATTACH: results/offset_sweep_1.txt to _3.txt]
+*Raw log from the earlier harness not preserved; regenerated in [Part III](#part-iii-regeneration).*
 
 **Verdict.** Supported. Placement alone accounts for the gap: v0, with its kernel and schedule untouched, reaches 246–247 GB/s.
 
@@ -471,19 +471,163 @@ I separate what the data establishes from what it suggests:
 
 It is not classical partition camping, which is load imbalance across memory partitions. Each stream's resident window here (~144 KiB per array) almost certainly spans every channel evenly.
 
-**Replication.** Within the run, every accepted rep sat within 0.5% of the 234.4 median, so the OFF = 64 result is not noise inside one process. It has not yet been reproduced in fresh processes, where the driver may place the buffers at different physical addresses. The offsets themselves survive translation from virtual to physical addresses; the base addresses may not.
+**Replication.** Within the run, every accepted rep sat within 0.5% of the 234.4 median, so the OFF = 64 result is not noise inside one process. It has since been reproduced in three fresh processes ([R8](#r8-offset-sweep-three-fresh-processes)). The offsets themselves survive translation from virtual to physical addresses; the base addresses may not.
 
-**What went wrong.** [TODO: if the first run of this sweep used 8 KB of padding, record here that at OFF = 8192 `c` was shifted 64 KiB, 56 KiB past its allocation. The allocator's 2 MiB rounding kept it from faulting, but that row came from an out-of-bounds configuration and has been rerun with 64 KiB padding. `compute-sanitizer` would have caught it.]
+**What went wrong.** An earlier run of this sweep may have used 8 KB of padding. If it did, the OFF = 8192 row shifted `c` by 64 KiB, 56 KiB past its allocation, and only the allocator's 2 MiB rounding kept it from faulting. Which padding that run used was not recorded and can't be recovered from the repository. Every E8 number in [R8](#r8-offset-sweep-three-fresh-processes) comes from the 64 KiB-padded binary, and `compute-sanitizer` reports 0 errors across all profile launches, including the largest shift ([results/sanitizer.txt](results/sanitizer.txt)).
+
+## Part III: regeneration
+
+Every experiment rerun with the current harness. What changed since Parts I–II:
+
+- **Harness:** clock sampling inside the timed region, convergence-based warm-up, true median, `__restrict__` on v0, and the deviation flag calibrated at 0.2% ([methodology](../../docs/methodology.md#deviation-flag)).
+- **Environment:** CUDA 13.1, driver 610.74, Ubuntu 26.04 LTS under WSL2. The original runs used an environment in which Nsight Compute could pin the SM clock; their toolkit, driver and OS were not recorded.
+- **Allocation:** every mode now allocates buffers 64 KiB longer than the arrays, so that the offset sweep can shift them.
+
+Predictions were committed before any of these runs: [results/predictions.md](results/predictions.md). Every log begins with the commit it was built from.
+
+### R1. Measurement checks
+
+Rerun before any kernel number; details in [methodology](../../docs/methodology.md).
+
+- `compute-sanitizer` memcheck: 0 errors across all six profile launches, including the largest shift ([results/sanitizer.txt](results/sanitizer.txt)).
+- Memory clock under load: 8201 MHz throughout ([M2](#m2-does-the-memory-clock-move-under-load)).
+- Noise floor: σ = 0.005–0.014% per rep, 0.070% for v1 at G = 768, no drift; the deviation flag is set at 0.2% ([results/noise.txt](results/noise.txt)).
+- Sampling the clock every 5 ms does not perturb the medians: they agree with `--poll-ms 0` within 0.03% (`results/poll5_*.txt`, `results/poll0_*.txt`).
+- The SM clock can be locked only from the Windows host, not from inside WSL2 ([results/lgc_test.txt](results/lgc_test.txt)).
+
+### R2. Baseline
+
+Regenerates [E2](#e2-baseline). Cold start, turbo mode, SM clock ~2730 MHz ([results/baseline.txt](results/baseline.txt)).
+
+| Variant | Parts I–II | Now | ms now | % of 262.4 |
+| --- | --- | --- | --- | --- |
+| v0 naive | 232.9 GB/s | 246.5 GB/s | 3.2663 | 93.9% |
+| v1 grid-stride, G = 768 | 245.3 GB/s | 243.8 GB/s | 3.3031 | 92.9% |
+| v1 grid-stride, G = 102,400 | 247.4 GB/s | 247.1 GB/s | 3.2591 | 94.2% |
+| v2 `float4` | 237.3 GB/s | 244.6 GB/s | 3.2928 | 93.2% |
+
+**Against the prediction** (each within 0.05% of the polling-check runs): held.
+
+**What it changes.** The gap between v1 and v0 is 0.2%, not 6%. v2 rose by 3% as well, which the `__restrict__` fix on v0 cannot explain, and E8 had already shown v0 reaching 246 GB/s with the old code by moving buffers alone. The most likely reading is that the default placement no longer lands on the penalty ([R8](#r8-offset-sweep-three-fresh-processes)).
+
+### R3. Rep 0 after a cold start
+
+Regenerates [M4](#m4-why-is-the-first-rep-always-rejected).
+
+**Prediction.** Rep 0 of the first configuration may still be rejected for an SM clock dip.
+
+**Result.** Rejected ([results/baseline.txt](results/baseline.txt)). The line above the rejection shows why:
+
+```
+ramp 621 ms to SM 2100 MHz
+rep 0 rejected: mem 8201-8201 MHz, SM 2100-2745 MHz (23.5%)
+```
+
+The warm-up declared convergence at 2100 MHz, an intermediate step, and the clock kept rising during rep 0. The same pattern appears at 2040, 2085 and 2115 MHz in other runs ([results/clock_base_ncu.txt](results/clock_base_ncu.txt), [results/noise.txt](results/noise.txt), [results/grid_sweep.txt](results/grid_sweep.txt)). Later configurations, starting warm, converge at 2715–2730 MHz in ~270 ms. Separately, rep 0 was twice rejected because the memory clock stepped from 7001 to 8201 MHz inside it ([results/clock_base.txt](results/clock_base.txt), [results/offset_sweep_3.txt](results/offset_sweep_3.txt)).
+
+**Verdict.** Prediction held. Convergence-based warm-up does not keep rep 0 clean after idle: holding within 1% for 200 ms does not tell an intermediate step from the final clock. The rejection gate catches it, so no reported median includes such a rep.
+
+**Next.** Require the clock to stop rising across two consecutive windows, or discard the first rep of each process by design.
+
+### R4. E4 in one session
+
+Regenerates [E4](#e4-does-the-deficit-live-in-the-sm-accidental). Nsight Compute no longer pins the SM clock in this setup: under it, every rep ran at 2715–2730 MHz and NVML reported no clock-setting reason ([results/clock_base_ncu.txt](results/clock_base_ncu.txt)). The rerun instead locks the SM clock at 1545 MHz from the Windows host, directly after the boost-clock baseline.
+
+| | SM ~2730 MHz | SM 1545 MHz (locked) | change |
+| --- | --- | --- | --- |
+| v0 | 3.2663 ms · 246.5 GB/s | 3.2951 ms · 244.4 GB/s | −0.9% |
+| v1, G = 768 | 3.3031 ms · 243.8 GB/s | 3.3504 ms · 240.4 GB/s | −1.4% |
+| v1, G = 102,400 | 3.2591 ms · 247.1 GB/s | 3.2853 ms · 245.1 GB/s | −0.8% |
+| v2 | 3.2928 ms · 244.6 GB/s | 3.2912 ms · 244.7 GB/s | +0.05% |
+
+[results/baseline.txt](results/baseline.txt), [results/clock_base.txt](results/clock_base.txt). At 2400 MHz the losses were 0.10–0.16% for v0 and v1 and none for v2 ([results/lgc_test.txt](results/lgc_test.txt)).
+
+**Against the prediction** (v2 unchanged; v0 and v1 slow by more than at 2400 MHz): held.
+
+**What it changes.** E4's central observation, v0 unaffected by a 43% cut in the SM clock, does not reproduce at the current default placement: v0 now loses about as much as v1. That is consistent with Parts I–II, where a memory-side penalty held v0 back and hid its small SM-side cost. What E4 was used to rule out still stands on other evidence: instruction work costs at most ~1.4% even at 1545 MHz, and the 5–6% gap tracks buffer placement, not code ([R8](#r8-offset-sweep-three-fresh-processes)).
+
+### R5. Profiler counts
+
+Regenerates [E1](#e1-is-traffic-really-3n), [E5](#e5-is-it-memory-level-parallelism) and [E6](#e6-is-it-coalescing): one launch of each configuration in `--profile` mode. Every metric name resolved; the output contains no `n/a` ([results/ncu.txt](results/ncu.txt)).
+
+| Kernel | DRAM read | DRAM write | instructions | per warp | load requests | sectors | sectors per request |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| v0 naive | 537.03 MB | 255.71 MB | 33,554,432 | 16 | 4,194,304 | 16,777,216 | 4 |
+| v1, G = 102,400 | 536.93 MB | 255.00 MB | 57,475,072 | 64 or 75 | 4,194,304 | 16,777,216 | 4 |
+| v2 `float4` | 537.18 MB | 255.39 MB | 9,961,472 | 19 | 1,048,576 | 16,777,216 | 16 |
+| v0, `b` + 128 B, `c` + 256 B | 536.88 MB | 254.98 MB | 33,554,432 | 16 | 4,194,304 | 16,777,216 | 4 |
+| swizzle, S = 8 | 536.93 MB | 255.29 MB | 44,040,192 | 21 | 4,194,304 | 16,777,216 | 4 |
+| v0, `b` + 32 KiB, `c` + 64 KiB | 536.93 MB | 254.84 MB | 33,554,432 | 16 | 4,194,304 | 16,777,216 | 4 |
+
+- **E1:** reads within 0.00–0.06% of the predicted 536.87 MB; writes 4.7–5.1% short, the same L2 residency effect as before. The L2 sector hit rate is 33.4% in every configuration, the write share of all sectors (1 in 3). That is consistent with every read missing and every write counting as a hit because nothing is fetched before it: no write-allocate traffic, seen from a second counter.
+- **E5:** v0 and v1 match the counts derived from the SASS in [A7](#a7-instruction-counts) exactly. The faster kernel executes 71% more instructions.
+- **E6:** 4 sectors per request for every scalar kernel and 16 for v2, the minimum in each case ([A8](#a8-sectors-per-request)).
+
+### R6. Grid sweep
+
+Regenerates [E3](#e3-is-it-grid-level-parallelism-and-overhead) ([results/grid_sweep.txt](results/grid_sweep.txt)).
+
+| G | GB/s | G | GB/s |
+| --- | --- | --- | --- |
+| 768 | 243.9 | 49,152 | 246.6 |
+| 1,536 | 244.3 | 65,536 | 244.5 |
+| 3,072 | 244.0 | 102,400 | 247.1 |
+| 6,144 | 244.0 | 131,072 | 247.7 |
+| 12,288 | 245.0 | 196,608 | 246.2 |
+| 24,576 | 246.6 | 262,144 | 245.7 |
+
+The peak has moved to 131,072 blocks (247.7 GB/s, 94.4%), 0.2% above 102,400, and the curve dips at 65,536. At 262,144, where every thread runs one iteration, v1 is 0.3% below v0: the cost of the loop's setup, including the division block. The curve remains confounded in the same three ways as E3.
+
+### R7. Swizzle sweep
+
+Regenerates [E7](#e7-is-it-the-address-to-block-mapping) ([results/swizzle_sweep.txt](results/swizzle_sweep.txt)).
+
+| LOG2S | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 10 | 16 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| GB/s, Parts I–II | 233.0 | 232.9 | 246.9 | 247.0 | 246.8 | 247.3 | 246.9 | 246.8 | 242.6 |
+| GB/s, now | 246.4 | 247.5 | 246.6 | 246.7 | 247.2 | 247.4 | 247.2 | 246.8 | 238.6 |
+
+**Against the prediction** (every row near 247): held except S = 2¹⁶. With the default placement no longer penalized, S = 1 is already at the ceiling and there is no step left to find. Packing 144 single-block clusters 4 KiB apart now costs 3.2%, more than before.
+
+The swizzle still removes the penalty where it exists: at OFF = 64, S = 4 runs at 246.3 GB/s against v0's 234.4 ([results/open.txt](results/open.txt)).
+
+### R8. Offset sweep, three fresh processes
+
+Regenerates [E8](#e8-is-it-the-buffers-placement) ([results/offset_sweep_1.txt](results/offset_sweep_1.txt), [_2](results/offset_sweep_2.txt), [_3](results/offset_sweep_3.txt)). Medians in GB/s:
+
+| OFF (floats) | `b` shift | `c` shift | Parts I–II | run 1 | run 2 | run 3 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | 0 | 0 | 233.0 | 246.4 | 246.5 | 246.5 |
+| 32 | 128 B | 256 B | 246.1 | 246.0 | 246.1 | 234.3 |
+| 64 | 256 B | 512 B | 234.4 | 234.4 | 234.5 | 234.4 |
+| 256 | 1 KiB | 2 KiB | 246.9 | 242.0 | 246.8 | 234.4 |
+| 1024 | 4 KiB | 8 KiB | 246.3 | 246.2 | 238.7 | 246.2 |
+| 8192 | 32 KiB | 64 KiB | 246.3 | 246.2 | 246.2 | 246.3 |
+
+**OFF = 64 reproduces exactly.** 234.4 GB/s in the original run and 234.4–234.5 in all three fresh processes, with every rep in the slow state. Open question 1 is answered.
+
+**The other rows move between processes, and the flagged reps show why.** Within a configuration, each rep sits in one of two states: ~3.26–3.27 ms (~246 GB/s) or ~3.43–3.45 ms (~234 GB/s). A rep between the two is one that switched partway through. Across the three sweeps and [results/open.txt](results/open.txt), 14 of the 22 configurations other than OFF = 64 began in the slow state and switched to the fast one after one to six reps. No configuration switched from fast to slow. The median reports whichever state held for at least four of the seven reps: OFF = 32 in run 3 reads 234.3 because reps 0–3 were slow and reps 4–6 fast.
+
+**Against the prediction** (the penalty moved rather than vanished; at least one shift lands near 233): held, in a sharper form. Only OFF = 64 is penalized in every rep. OFF = 0, which carried the whole penalty in Parts I–II, now has a fast median in every process.
+
+**What this establishes, and what it doesn't.**
+
+- **Established:** the penalty is a discrete state of ~5%. Its size is the same wherever it appears, 232.9–234.5 GB/s then and now, and certain relative offsets hold it on.
+- **New:** with nothing in the program changed, other configurations leave that state within seconds. A fixed collision in the address-to-DRAM mapping can't do that on its own, because the buffers' virtual addresses never change during a configuration.
+- **Consistent with, not distinguishable here:** the buffers' physical placement changing during the process (under WSL2, Windows' video memory manager decides it), an adaptive memory-controller policy, or a power state left over from the idle gap before each configuration. See [open question 8](#open-questions).
 
 ## Conclusion
 
-1. **v0's deficit is a buffer-placement penalty, not a kernel inefficiency.** With the kernel and its schedule untouched, moving two buffers by a few hundred bytes recovers it ([E8](#e8-is-it-the-buffers-placement)).
-2. **Grid-stride won by accident.** It cannot change the distance between buffers; it changes which addresses are in flight together, which makes the collision cheap. A block swizzle does the same with no loop at all ([E7](#e7-is-it-the-address-to-block-mapping)).
-3. **Ruled out with evidence:** instruction and scheduling overhead ([E4](#e4-does-the-deficit-live-in-the-sm-accidental)), memory-level parallelism ([E5](#e5-is-it-memory-level-parallelism)), coalescing ([E6](#e6-is-it-coalescing)), traffic volume ([E1](#e1-is-traffic-really-3n)) and wave quantization ([Part 0](#wave-quantization-does-the-grid-feed-the-sms-to-the-end)).
-4. **The practical ceiling is ~247 GB/s, 94.1% of 262.4.** Three unrelated routes converge on it: tuned grid-stride (247.4), a swizzle with four or more clusters (246.8–247.3) and buffer offsets (246.1–246.9). Convergence from different directions is the evidence. The remaining 6% goes to refresh, bus turnaround and controller overhead, and no configuration I've tried recovers any of it.
-5. **Mechanism:** consistent with collisions in the address-to-DRAM mapping, most plausibly row-buffer conflicts among the three streams. Not confirmed below the partition level.
+Parts I–II concluded from the original runs; [Part III](#part-iii-regeneration) reran everything. Where they differ, this reflects Part III.
 
-The first prediction in Part 0 held: every variant can reach the ceiling. The other two, about why v1 and v2 would gain, were wrong in instructive ways.
+1. **The deficit is a buffer-placement penalty, not a kernel inefficiency.** With the kernel and its schedule untouched, moving two buffers by a few hundred bytes turns it on or off ([E8](#e8-is-it-the-buffers-placement), [R8](#r8-offset-sweep-three-fresh-processes)). It is a discrete ~5% state, and OFF = 64 holds it on reproducibly: 234.4 GB/s then and now.
+2. **Whether the default placement pays it depends on the environment.** In the original runs, naive paid it and grid-stride won by 6%. In the current setup the default placement doesn't, and the two tie at ~247 GB/s ([R2](#r2-baseline)).
+3. **Grid-stride and the swizzle avoid it by changing which addresses are concurrent,** not the distance between buffers. The swizzle removes the OFF = 64 penalty with no loop at all ([E7](#e7-is-it-the-address-to-block-mapping), [R7](#r7-swizzle-sweep)).
+4. **Ruled out with evidence:** memory-level parallelism (instruction counts match the SASS exactly, [R5](#r5-profiler-counts)), coalescing (4 sectors per request), traffic volume (reads within 0.06%) and wave quantization ([Part 0](#wave-quantization-does-the-grid-feed-the-sms-to-the-end)). Instruction work costs at most ~1.4% even with the SM clock cut 43% ([R4](#r4-e4-in-one-session)), far short of the penalty.
+5. **The practical ceiling is ~247 GB/s, 94% of 262.4.** Tuned grid-stride (247.1–247.7), the swizzle (246.6–247.5) and naive at a penalty-free placement (246.5) converge on it. The remaining ~6% goes to refresh, bus turnaround and controller overhead, and no configuration I've tried recovers any of it.
+6. **Mechanism:** consistent with collisions in the address-to-DRAM mapping. The regeneration adds that the penalty can switch off within a process while the virtual addresses stay fixed, so something below the program changes during a run. Not confirmed.
+
+The first prediction in Part 0 held: every variant lands close to the ceiling, v2 within ~1%. The other two, about why v1 and v2 would gain, were wrong in instructive ways.
 
 **Related work.** Ruetsch and Micikevicius, *Optimizing Matrix Transpose in CUDA* (NVIDIA, 2009), describe partition camping in older GPUs and fix it with diagonal block reordering. That is a block swizzle: the same family of fix, for a related but different effect.
 
@@ -496,26 +640,32 @@ The first prediction in Part 0 held: every variant can reach the ceiling. The ot
 | H3 | 8201 MHz is a vendor turbo offset | own | M3 | supported |
 | H4 | Rep 0 fails because the SM clock is still ramping | joint | M4 | supported: ~0.5 s ramp |
 | H5 | Traffic exceeds 3N (write-allocate) | discussion | E1 | falsified: reads exact; ceiling bounds extra traffic at 6% |
-| H6 | v0 loses to instruction and scheduling overhead | own | E3, E4 | falsified by E4 |
+| H6 | v0 loses to instruction and scheduling overhead | own | E3, E4 | falsified by E4; the gap tracks placement (E8, R8) |
 | H7 | Wave quantization explains the 102,400 optimum | own | arithmetic | falsified: tail ≤ 0.1% |
 | H8 | v1 keeps more bytes in flight per thread | discussion | E5 | falsified: 8 B each, and v2 isn't fastest |
 | H9 | v0's loads are partly uncoalesced | discussion | E6 | falsified: exact sector count |
 | H10 | Which addresses are concurrent matters, not the loop | discussion | E7 | supported |
-| H11 | Buffer placement causes a collision; concurrency changes its cost | discussion | E8 | supported; replication pending |
+| H11 | Buffer placement causes a collision; concurrency changes its cost | discussion | E8 | supported; OFF = 64 replicates in fresh processes (R8) |
+| H12 | The 256/512 B penalty reproduces in fresh processes | own | R8 | supported: 234.4 GB/s in 3 of 3 processes |
+| H13 | The penalty is a fixed function of the buffers' offsets | discussion | R8 | falsified: configurations switch between ~234 and ~246 GB/s within one process |
+| H14 | Convergence-based warm-up keeps rep 0 clean | own | R3 | falsified: the ramp can settle on an intermediate clock after idle |
+| H15 | v0 is insensitive to the SM clock | own | E4, R4 | not reproduced: at the current default placement v0 loses 0.9% at 1545 MHz |
 
 "Own" means I proposed it; "discussion" means it came out of working through the problem with Claude (see [How this was done](#how-this-was-done)); "joint" means both.
 
 ## Threats to validity
 
-1. **The OFF = 64 anomaly is one process's run.** It is stable within that process, but untested across fresh allocations.
+1. **Placement is only partly controlled.** OFF = 64 now reproduces across fresh processes (R8), but other configurations switch state within a process, so a single median can describe either state.
 2. **Physical placement is invisible.** Offsets under a page survive translation from virtual to physical addresses; where the driver puts each 256 MiB buffer does not, and may differ between runs.
 3. **Clocks are gated, not locked.** 3. **Clocks are gated, not locked.** A lock is accepted only from the Windows host, not from inside WSL2 ([methodology](../../docs/methodology.md#limitations)). Results are taken unlocked, so the harness rejects reps where clocks move instead of preventing movement.
 4. **The harness may perturb what it measures.** It polls NVML every 5 ms during timed reps. Checked: medians with `--poll-ms 5` and `--poll-ms 0` agree within 0.03% in every configuration, inside the run-to-run range ([methodology](../../docs/methodology.md#how-a-rep-is-timed)). Excursions shorter than 5 ms are invisible.
 5. **The ceiling is empirical.** ~247 GB/s is the best of the configurations I tried for a 2-read/1-write stream. A different read/write mix may reach more.
-6. **The profiler measures a different run.** One launch, caches flushed, clocks pinned. Steady-state behaviour is inferred from it, not observed.
+6. **The profiler measures a different run.** One launch, caches flushed, and clocks pinned where the setup allows it (not under WSL2, R4). Steady-state behaviour is inferred from it, not observed.
 7. **The control-bit layout is reverse-engineered,** not documented by NVIDIA ([A6](#a6-reading-scoreboard-barriers-from-the-control-word)). Its decode was self-consistent across every instruction in these kernels, which is evidence, not proof.
 8. **The DRAM latency in Part 0 is assumed.** At 1.2 µs instead of 500 ns, v0's Little's Law margin would be gone (0.98×) while v2's would still be 3.9×. E8 limits the concern in practice: once placement is fixed, v0 reaches the same ceiling as everything else, so 8 bytes per thread is enough whatever the latency is.
 9. **One machine.** Nothing here is claimed to hold on another GPU.
+10. **WSL2 sits between the program and the GPU.** The Windows driver (WDDM) owns the GPU, and Windows' video memory manager decides where buffers physically live. The within-process state switches in R8 may come from that layer; a native-Linux run would separate it.
+11. **A median can hide a bimodal configuration.** When reps split between two states, the median reports whichever held for at least four of seven reps. The flagged-rep list under each result shows the other state; R8 reads both.
 
 ## What transfers to inference
 
@@ -523,7 +673,7 @@ The first prediction in Part 0 held: every variant can reach the ceiling. The ot
 
 **Batch-1 decode is this problem at scale.** Generating a token streams every weight through memory once. For 2.5 GB of fp16 weights, about 1.2B parameters, that caps decode near 247 ÷ 2.5 ≈ 99 tokens/s on this card, before KV-cache reads.
 
-**Any kernel that streams several large buffers in lockstep has this exposure.** A fused gate-and-up projection reads two weight matrices together. Decode attention reads K and V caches together. A fused residual-add and RMSNorm reads two activation buffers and writes one. In each, how the buffers are placed relative to each other is an allocator decision, invisible in the kernel's code, and E8 shows it can be worth 6%.
+**Any kernel that streams several large buffers in lockstep has this exposure.** A fused gate-and-up projection reads two weight matrices together. Decode attention reads K and V caches together. A fused residual-add and RMSNorm reads two activation buffers and writes one. In each, how the buffers are placed relative to each other is an allocator decision, invisible in the kernel's code, and E8 and R8 show it can be worth 5–6%.
 
 **Paged KV caches change which addresses are concurrent by design.** Whether that helps the way the swizzle did, or hurts, is an empirical question for kernel 07.
 
@@ -543,6 +693,22 @@ The first prediction in Part 0 held: every variant can reach the ceiling. The ot
 
 For question 2, my prediction from the SASS is that `a`–`b` matters most: v0 issues those two loads back to back, while the store waits a full DRAM round trip. The counterpoint is that other warps' stores overlap in time with reads at nearby `i`, so I hold that prediction loosely.
 
+**Status after regeneration.**
+
+- **Question 1:** answered, yes. OFF = 64 gives 234.4–234.5 GB/s in three of three fresh processes ([R8](#r8-offset-sweep-three-fresh-processes)).
+- **Question 2:** can't be answered as designed. The test assumed the default placement was penalized, and it no longer is: shifting only `b` by 128 B gives 246.3 GB/s and shifting only `c` by 128 B gives 246.0 ([results/open.txt](results/open.txt)). It needs redesigning around OFF = 64, the one placement penalized every time, for example shifting only `b` by 256 B, then only `c` by 512 B.
+- **Question 3:** answered, yes. The swizzle at S = 4 runs at 246.3 GB/s with OFF = 64, against 234.4 for v0 ([R7](#r7-swizzle-sweep)).
+- **Question 4:** v2 with OFF = 32 reaches 245.3 GB/s, 0.3% above unshifted v2 and still ~1% below the ceiling, so v2's shortfall is not the penalty that shift removes. Its cause is open.
+- **Question 5:** reframed. At the current default placement v0 also loses 0.9% at 1545 MHz, and v0 has no division block, so the division is not needed to explain v1's loss ([R4](#r4-e4-in-one-session)).
+
+New questions from the regeneration:
+
+| # | Question | Test |
+| --- | --- | --- |
+| 8 | What switches a configuration from the slow state to the fast one within a process? Candidates: Windows relocating the buffers in physical memory, an adaptive memory-controller policy, or a power state left over from the idle gap before each configuration | Rerun the offset sweep on native Linux; insert an idle gap of a few seconds before a configuration that is already fast and see whether it restarts slow |
+| 9 | Why did the default placement stop paying the penalty? | Print the buffers' addresses in the log header; rerun under the original setup if it can be restored |
+| 10 | Why does packing 144 single-block clusters 4 KiB apart cost 3% (S = 2¹⁶)? | Sweep the cluster spacing between 4 KiB and 256 KiB |
+
 ## Errors caught along the way
 
 - **The framing.** I asked why v1 was fast. Every hypothesis in E3–E6 examined what v1 did differently; the answer was in what the environment did to v0.
@@ -555,6 +721,10 @@ For question 2, my prediction from the SASS is that `a`–`b` matters most: v0 i
 - **A warm-up constant set on a measured threshold** (M4).
 - **Silent tool failures:** typo'd metric names returning `n/a` (E6), a throttle query failure reported as "no throttle", and log messages naming causes nobody had checked. The current harness prints what it measured, not what it assumes.
 - **Documentation written from the plan rather than the code.** An earlier methodology described a convergence-based warm-up the code didn't yet have, and v0 had lost `__restrict__` after its SASS was taken.
+
+- **A headline from one environment** (R2). The 6% gap that framed the whole investigation doesn't reproduce at the default placement in the current setup. The penalty behind it does, at the same offset and the same speed.
+- **An intermediate clock read as convergence** (R3). The convergence-based warm-up, written to replace a fixed constant, can settle on an intermediate SM clock after idle. The rejection gate catches what the warm-up misses.
+- **A tool assumed to behave as before** (R4). Nsight Compute's clock pinning, which produced E4, doesn't happen in the current setup. Only the SM clock column in the log showed it.
 
 ## Timeline
 
@@ -574,6 +744,10 @@ The experiments are numbered in the order the argument needs; this is the order 
 | 10 | Sector count, the one metric that survived a typo'd command | E6 |
 | 11 | Swizzle sweep | E7 |
 | 12 | Buffer-offset sweep | E8 |
+| 13 | Regeneration checks: sanitizer, clock under load, noise floor, polling, clock lock | R1 |
+| 14 | Predictions for the regeneration committed before running | Part III |
+| 15 | Baseline from a cold start; E4 under Nsight Compute, then under the Windows lock | R2–R4 |
+| 16 | Profiler counts, grid, swizzle and offset sweeps, open questions | R5–R8 |
 
 ## Appendix: derivations
 
@@ -698,3 +872,5 @@ write-allocate would mean x = 33% (4N instead of 3N): 329.9 GB/s, impossible
 ## How this was done
 
 I worked through this investigation with Claude, Anthropic's AI model, as a sparring partner. The measurement work in Part I started from my own observations: the dynamic denominator, the 8201 MHz reading, the turbo hypothesis and the warm-up threshold. Several later hypotheses and experiment designs came out of that back-and-forth, including the memory-level-parallelism test, the control-bit and trip-count analysis of the SASS, the block swizzle and the buffer-offset control; the [hypothesis ledger](#hypothesis-ledger) marks which. Every experiment ran on my machine, and every number comes from my logs.
+
+The regeneration in Part III followed the same arrangement: which checks to run, in what order, and how to read them was worked out with Claude; every run was on my machine, and every number comes from the logs in [results/](results/).
