@@ -161,8 +161,7 @@ Under sustained vector-add load NVML reports no reasons (`0x0`). At idle it repo
 
 ## Limitations
 
-- **Laptop GPU.** [TODO: confirm whether `sudo nvidia-smi -lgc` is refused on this machine. If it works, lock clocks and say so here; if not, say that clocks are gated and reported instead of locked.]
-- **One machine.** Nothing here is claimed to transfer to another GPU.
+- **Laptop GPU.** - **Clocks are gated, not locked.** From inside WSL2, `sudo nvidia-smi -lgc 2400,2400` is refused (`Unknown Error`, exit code 255). From an administrator PowerShell on the Windows host, the same lock is accepted and holds: every rep of the baseline ran at exactly 2400 MHz ([results/lgc_test.txt](../kernels/01_vector_add/results/lgc_test.txt)). Results are still taken unlocked, at the natural boost clock (~2715–2730 MHz), with the gating described above, to match the conditions under which the noise floor and the polling check were measured. At 2400 MHz, v0 and v1 run 0.10–0.16% slower and v2 is unchanged, so locked and unlocked numbers are not interchangeable. The lock remains available for experiments that vary the SM clock deliberately.
 - **DRAM latency is assumed**, ~500 ns, wherever Little's Law is applied. It is not measured; a pointer-chase microbenchmark would measure it.
 - **No bank- or row-level DRAM counters** are exposed on this GPU, so effects below the memory-partition level are inferred, not observed.
 - **NVML sampling runs on the host.** A clock excursion shorter than the 5 ms sampling interval can be missed.

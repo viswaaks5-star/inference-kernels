@@ -509,7 +509,7 @@ The first prediction in Part 0 held: every variant can reach the ceiling. The ot
 
 1. **The OFF = 64 anomaly is one process's run.** It is stable within that process, but untested across fresh allocations.
 2. **Physical placement is invisible.** Offsets under a page survive translation from virtual to physical addresses; where the driver puts each 256 MiB buffer does not, and may differ between runs.
-3. **Clocks are gated, not locked.** A laptop GPU won't necessarily accept a clock lock, so the harness rejects reps where clocks move instead of preventing movement.
+3. **Clocks are gated, not locked.** 3. **Clocks are gated, not locked.** A lock is accepted only from the Windows host, not from inside WSL2 ([methodology](../../docs/methodology.md#limitations)). Results are taken unlocked, so the harness rejects reps where clocks move instead of preventing movement.
 4. **The harness may perturb what it measures.** It polls NVML every 5 ms during timed reps. Checked: medians with `--poll-ms 5` and `--poll-ms 0` agree within 0.03% in every configuration, inside the run-to-run range ([methodology](../../docs/methodology.md#how-a-rep-is-timed)). Excursions shorter than 5 ms are invisible.
 5. **The ceiling is empirical.** ~247 GB/s is the best of the configurations I tried for a 2-read/1-write stream. A different read/write mix may reach more.
 6. **The profiler measures a different run.** One launch, caches flushed, clocks pinned. Steady-state behaviour is inferred from it, not observed.
