@@ -1,0 +1,41 @@
+GIT_SHA: 86bf33b 
+device   : NVIDIA GeForce RTX 4060 Laptop GPU (sm_89, 24 SMs, 1536 threads/SM)
+memory   : 128-bit bus, L2 32.0 MiB
+software : CUDA runtime 13.1, driver 610.74 (supports CUDA 13.3)
+os       : Ubuntu 26.04 LTS, kernel 6.6.114.1-microsoft-standard-WSL2
+clocks   : memory 8201 MHz at startup (NVML max 8001 MHz), SM max 3105 MHz
+resident : blocks/SM v0 6, v1 6, v2 6 at 256 threads/block (144, 144, 144 on the GPU)
+problem  : n = 67108864 floats, 256.0 MiB per array, 805.3 MB moved per launch, buffers padded by 64 KiB for shifts
+mode     : --offset-sweep, clocks sampled every 5 ms inside each rep
+
+kernel                                ms     GB/s   %peak   mem MHz      SM MHz  reps  spread
+--------------------------------------------------------------------------------------------
+v0_naive                          3.2679    246.4   93.9%      8201   2715-2715   7/7   5.19%
+                               ramp 280 ms to SM 2715 MHz, 95 clock samples/rep, reasons: none
+                               rep 0: 3.4372 ms, +5.18% from the median (flag threshold 0.2%)
+v0_naive b+128B c+256B            3.2740    246.0   93.7%      8201   2715-2715   7/7   5.06%
+                               ramp 285 ms to SM 2715 MHz, 96 clock samples/rep, reasons: none
+                               rep 2: 3.4373 ms, +4.99% from the median (flag threshold 0.2%)
+                               rep 1: 3.4380 ms, +5.01% from the median (flag threshold 0.2%)
+                               rep 0: 3.4383 ms, +5.02% from the median (flag threshold 0.2%)
+v0_naive b+256B c+512B            3.4356    234.4   89.3%      8201   2715-2715   7/7   0.04%
+                               ramp 285 ms to SM 2715 MHz, 98 clock samples/rep, reasons: none
+v0_naive b+1024B c+2048B          3.3275    242.0   92.2%      8201   2715-2715   7/7   5.24%
+                               ramp 278 ms to SM 2715 MHz, 97 clock samples/rep, reasons: none
+                               rep 6: 3.2618 ms, -1.97% from the median (flag threshold 0.2%)
+                               rep 4: 3.2626 ms, -1.95% from the median (flag threshold 0.2%)
+                               rep 5: 3.2627 ms, -1.95% from the median (flag threshold 0.2%)
+                               rep 0: 3.4343 ms, +3.21% from the median (flag threshold 0.2%)
+                               rep 1: 3.4355 ms, +3.25% from the median (flag threshold 0.2%)
+                               rep 2: 3.4363 ms, +3.27% from the median (flag threshold 0.2%)
+v0_naive b+4096B c+8192B          3.2706    246.2   93.8%      8201   2715-2715   7/7   5.18%
+                               ramp 284 ms to SM 2715 MHz, 94 clock samples/rep, reasons: none
+                               rep 2: 3.2800 ms, +0.29% from the median (flag threshold 0.2%)
+                               rep 0: 3.4376 ms, +5.11% from the median (flag threshold 0.2%)
+                               rep 1: 3.4394 ms, +5.16% from the median (flag threshold 0.2%)
+v0_naive b+32768B c+65536B        3.2704    246.2   93.8%      8201   2715-2715   7/7   5.37%
+                               ramp 278 ms to SM 2715 MHz, 96 clock samples/rep, reasons: none
+                               rep 1: 3.3704 ms, +3.06% from the median (flag threshold 0.2%)
+                               rep 0: 3.4454 ms, +5.35% from the median (flag threshold 0.2%)
+
+all configurations verified before timing

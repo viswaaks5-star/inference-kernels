@@ -1,0 +1,24 @@
+GIT_SHA: 86bf33b 
+device   : NVIDIA GeForce RTX 4060 Laptop GPU (sm_89, 24 SMs, 1536 threads/SM)
+memory   : 128-bit bus, L2 32.0 MiB
+software : CUDA runtime 13.1, driver 610.74 (supports CUDA 13.3)
+os       : Ubuntu 26.04 LTS, kernel 6.6.114.1-microsoft-standard-WSL2
+clocks   : memory 8201 MHz at startup (NVML max 8001 MHz), SM max 3105 MHz
+resident : blocks/SM v0 6, v1 6, v2 6 at 256 threads/block (144, 144, 144 on the GPU)
+problem  : n = 67108864 floats, 256.0 MiB per array, 805.3 MB moved per launch, buffers padded by 64 KiB for shifts
+mode     : --baseline, clocks sampled every 5 ms inside each rep
+
+kernel                                ms     GB/s   %peak   mem MHz      SM MHz  reps  spread
+--------------------------------------------------------------------------------------------
+v0_naive                          3.2951    244.4   93.1%      8201   1545-1545   6/7   0.63%
+                               ramp 375 ms to SM 1545 MHz, 27 clock samples/rep, reasons: GpuIdle
+                               rep 0 rejected: mem 7001-8201 MHz, SM 1545-1545 MHz (0.0%), reasons: GpuIdle
+                               rep 1: 3.3155 ms, +0.62% from the median (flag threshold 0.2%)
+v1_grid_stride G=768              3.3504    240.4   91.6%      8201   1545-1545   7/7   0.05%
+                               ramp 320 ms to SM 1545 MHz, 26 clock samples/rep, reasons: GpuIdle
+v1_grid_stride G=102400           3.2853    245.1   93.4%      8201   1545-1545   7/7   0.03%
+                               ramp 329 ms to SM 1545 MHz, 27 clock samples/rep, reasons: GpuIdle
+v2_vec4                           3.2912    244.7   93.2%      8201   1545-1545   7/7   0.04%
+                               ramp 330 ms to SM 1545 MHz, 25 clock samples/rep, reasons: GpuIdle
+
+all configurations verified before timing

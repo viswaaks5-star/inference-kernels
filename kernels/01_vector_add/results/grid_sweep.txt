@@ -1,0 +1,39 @@
+GIT_SHA: 86bf33b 
+device   : NVIDIA GeForce RTX 4060 Laptop GPU (sm_89, 24 SMs, 1536 threads/SM)
+memory   : 128-bit bus, L2 32.0 MiB
+software : CUDA runtime 13.1, driver 610.74 (supports CUDA 13.3)
+os       : Ubuntu 26.04 LTS, kernel 6.6.114.1-microsoft-standard-WSL2
+clocks   : memory 8201 MHz at startup (NVML max 8001 MHz), SM max 3105 MHz
+resident : blocks/SM v0 6, v1 6, v2 6 at 256 threads/block (144, 144, 144 on the GPU)
+problem  : n = 67108864 floats, 256.0 MiB per array, 805.3 MB moved per launch, buffers padded by 64 KiB for shifts
+mode     : --grid-sweep, clocks sampled every 5 ms inside each rep
+
+kernel                                ms     GB/s   %peak   mem MHz      SM MHz  reps  spread
+--------------------------------------------------------------------------------------------
+v1_grid_stride G=768              3.3016    243.9   92.9%      8201   2730-2730   6/7   0.20%
+                               ramp 609 ms to SM 2115 MHz, 94 clock samples/rep, reasons: none
+                               rep 0 rejected: mem 8201-8201 MHz, SM 2115-2730 MHz (22.5%), reasons: GpuIdle
+v1_grid_stride G=1536             3.2965    244.3   93.1%      8201   2730-2730   7/7   0.04%
+                               ramp 273 ms to SM 2730 MHz, 91 clock samples/rep, reasons: none
+v1_grid_stride G=3072             3.3004    244.0   93.0%      8201   2730-2730   7/7   0.03%
+                               ramp 271 ms to SM 2730 MHz, 94 clock samples/rep, reasons: none
+v1_grid_stride G=6144             3.3003    244.0   93.0%      8201   2715-2730   7/7   0.01%
+                               ramp 277 ms to SM 2730 MHz, 91 clock samples/rep, reasons: none
+v1_grid_stride G=12288            3.2869    245.0   93.4%      8201   2715-2715   7/7   0.02%
+                               ramp 274 ms to SM 2715 MHz, 92 clock samples/rep, reasons: none
+v1_grid_stride G=24576            3.2655    246.6   94.0%      8201   2715-2715   7/7   0.02%
+                               ramp 274 ms to SM 2715 MHz, 90 clock samples/rep, reasons: none
+v1_grid_stride G=49152            3.2656    246.6   94.0%      8201   2715-2715   7/7   0.05%
+                               ramp 271 ms to SM 2715 MHz, 95 clock samples/rep, reasons: none
+v1_grid_stride G=65536            3.2936    244.5   93.2%      8201   2715-2715   7/7   0.02%
+                               ramp 271 ms to SM 2715 MHz, 93 clock samples/rep, reasons: none
+v1_grid_stride G=102400           3.2593    247.1   94.1%      8201   2715-2715   7/7   0.02%
+                               ramp 274 ms to SM 2715 MHz, 93 clock samples/rep, reasons: none
+v1_grid_stride G=131072           3.2517    247.7   94.4%      8201   2715-2715   7/7   0.02%
+                               ramp 268 ms to SM 2715 MHz, 93 clock samples/rep, reasons: none
+v1_grid_stride G=196608           3.2704    246.2   93.8%      8201   2715-2715   7/7   0.03%
+                               ramp 270 ms to SM 2715 MHz, 92 clock samples/rep, reasons: none
+v1_grid_stride G=262144           3.2777    245.7   93.6%      8201   2715-2715   7/7   0.01%
+                               ramp 280 ms to SM 2715 MHz, 93 clock samples/rep, reasons: none
+
+all configurations verified before timing

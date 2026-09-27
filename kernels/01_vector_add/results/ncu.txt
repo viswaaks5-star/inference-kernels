@@ -1,0 +1,102 @@
+==PROF== Connected to process 52829 (/home/viswaa/cuda-kernels/cuda-kernels/bin/01_vector_add)
+==PROF== Profiling "vecadd_naive": 0%....50%....100% - 3 passes
+==PROF== Profiling "vecadd_grid_stride": 0%....50%....100% - 3 passes
+==PROF== Profiling "vecadd_vec4": 0%....50%....100% - 3 passes
+==PROF== Profiling "vecadd_naive": 0%....50%....100% - 3 passes
+==PROF== Profiling "vecadd_swizzle": 0%....50%....100% - 3 passes
+==PROF== Profiling "vecadd_naive": 0%....50%....100% - 3 passes
+GIT_SHA: 86bf33b 
+device   : NVIDIA GeForce RTX 4060 Laptop GPU (sm_89, 24 SMs, 1536 threads/SM)
+memory   : 128-bit bus, L2 32.0 MiB
+software : CUDA runtime 13.1, driver 610.74 (supports CUDA 13.3)
+os       : Ubuntu 26.04 LTS, kernel 6.6.114.1-microsoft-standard-WSL2
+clocks   : memory 8201 MHz at startup (NVML max 8001 MHz), SM max 3105 MHz
+resident : blocks/SM v0 6, v1 6, v2 6 at 256 threads/block (144, 144, 144 on the GPU)
+problem  : n = 67108864 floats, 256.0 MiB per array, 805.3 MB moved per launch, buffers padded by 64 KiB for shifts
+mode     : --profile, clocks sampled every 5 ms inside each rep
+profile launch 1: v0_naive
+profile launch 2: v1_grid_stride G=102400
+profile launch 3: v2_vec4
+profile launch 4: v0_naive b+128B c+256B
+profile launch 5: swizzle S=2^3
+profile launch 6: v0_naive b+32768B c+65536B
+==PROF== Disconnected from process 52829
+[52829] 01_vector_add@127.0.0.1
+  <unnamed>::vecadd_naive(const float *, const float *, float *, int) (262144, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Command line profiler metrics
+    ----------------------------------------------- ----------- ------------
+    Metric Name                                     Metric Unit Metric Value
+    ----------------------------------------------- ----------- ------------
+    dram__bytes_read.sum                                  Mbyte       537.03
+    dram__bytes_write.sum                                 Mbyte       255.71
+    l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                  4194304
+    l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum       sector     16777216
+    lts__t_sector_hit_rate.pct                                %        33.36
+    smsp__inst_executed.sum                                inst     33554432
+    ----------------------------------------------- ----------- ------------
+
+  <unnamed>::vecadd_grid_stride(const float *, const float *, float *, int) (102400, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Command line profiler metrics
+    ----------------------------------------------- ----------- ------------
+    Metric Name                                     Metric Unit Metric Value
+    ----------------------------------------------- ----------- ------------
+    dram__bytes_read.sum                                  Mbyte       536.93
+    dram__bytes_write.sum                                 Mbyte       255.00
+    l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                  4194304
+    l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum       sector     16777216
+    lts__t_sector_hit_rate.pct                                %        33.39
+    smsp__inst_executed.sum                                inst     57475072
+    ----------------------------------------------- ----------- ------------
+
+  <unnamed>::vecadd_vec4(const float4 *, const float4 *, float4 *, int) (65536, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Command line profiler metrics
+    ----------------------------------------------- ----------- ------------
+    Metric Name                                     Metric Unit Metric Value
+    ----------------------------------------------- ----------- ------------
+    dram__bytes_read.sum                                  Mbyte       537.18
+    dram__bytes_write.sum                                 Mbyte       255.39
+    l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                  1048576
+    l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum       sector     16777216
+    lts__t_sector_hit_rate.pct                                %        33.37
+    smsp__inst_executed.sum                                inst      9961472
+    ----------------------------------------------- ----------- ------------
+
+  <unnamed>::vecadd_naive(const float *, const float *, float *, int) (262144, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Command line profiler metrics
+    ----------------------------------------------- ----------- ------------
+    Metric Name                                     Metric Unit Metric Value
+    ----------------------------------------------- ----------- ------------
+    dram__bytes_read.sum                                  Mbyte       536.88
+    dram__bytes_write.sum                                 Mbyte       254.98
+    l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                  4194304
+    l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum       sector     16777216
+    lts__t_sector_hit_rate.pct                                %        33.37
+    smsp__inst_executed.sum                                inst     33554432
+    ----------------------------------------------- ----------- ------------
+
+  void <unnamed>::vecadd_swizzle<3>(const float *, const float *, float *, int) (262144, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Command line profiler metrics
+    ----------------------------------------------- ----------- ------------
+    Metric Name                                     Metric Unit Metric Value
+    ----------------------------------------------- ----------- ------------
+    dram__bytes_read.sum                                  Mbyte       536.93
+    dram__bytes_write.sum                                 Mbyte       255.29
+    l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                  4194304
+    l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum       sector     16777216
+    lts__t_sector_hit_rate.pct                                %        33.36
+    smsp__inst_executed.sum                                inst     44040192
+    ----------------------------------------------- ----------- ------------
+
+  <unnamed>::vecadd_naive(const float *, const float *, float *, int) (262144, 1, 1)x(256, 1, 1), Context 1, Stream 7, Device 0, CC 8.9
+    Section: Command line profiler metrics
+    ----------------------------------------------- ----------- ------------
+    Metric Name                                     Metric Unit Metric Value
+    ----------------------------------------------- ----------- ------------
+    dram__bytes_read.sum                                  Mbyte       536.93
+    dram__bytes_write.sum                                 Mbyte       254.84
+    l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum                  4194304
+    l1tex__t_sectors_pipe_lsu_mem_global_op_ld.sum       sector     16777216
+    lts__t_sector_hit_rate.pct                                %        33.39
+    smsp__inst_executed.sum                                inst     33554432
+    ----------------------------------------------- ----------- ------------
+
