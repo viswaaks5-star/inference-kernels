@@ -21,7 +21,16 @@ CUDA events, not host clocks: a launch returns to the host as soon as the work i
 
 Seven reps are taken. The reported time is the median of the accepted reps; with an even number accepted, the mean of the two middle values.
 
-`--poll-ms 0` samples only at the start and end of each rep. It exists to check that sampling doesn't perturb the measurement. [TODO: run the baseline with `--poll-ms 5` and `--poll-ms 0`, and record here that the medians agree within noise.]
+`--poll-ms 0` samples only at the start and end of each rep. It exists to check that sampling doesn't perturb the measurement. Checked: three runs of each setting, alternated in fresh processes ([results/](../kernels/01_vector_add/results/), `poll5_*.txt` and `poll0_*.txt`). The medians agree within the run-to-run range of each setting:
+
+| Configuration | poll 0 (mean of 3 medians) | poll 5 | difference | run-to-run range |
+|---|---|---|---|---|
+| v0 naive | 3.2670 ms | 3.2672 ms | 0.005% | 0.03–0.04% |
+| v1 grid-stride, G = 768 | 3.3024 ms | 3.3032 ms | 0.024% | 0.07–0.09% |
+| v1 grid-stride, G = 102,400 | 3.2588 ms | 3.2586 ms | 0.004% | 0.01–0.02% |
+| v2 `float4` | 3.2926 ms | 3.2928 ms | 0.006% | 0.01% |
+
+Sampling every 5 ms does not measurably perturb the result. It does change what gets rejected: `--poll-ms 0` accepted all 84 reps and `--poll-ms 5` rejected 2 (both v0, the first configuration after startup), because sampling only at a rep's ends cannot see a clock dip in its middle. The default stays at 5 ms.
 
 ## Clock state
 
