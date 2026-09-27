@@ -35,7 +35,7 @@ constexpr int kGridStrideBlocks = 102400;              // v1's tuned grid (E3)
 
 constexpr int kGridSweep[] = {768, 1536, 3072, 6144, 12288, 24576, 49152,
                               65536, 102400, 131072, 196608, 262144};
-constexpr int kSwizzleSweep[] = {0, 1, 2, 3, 4, 5, 6, 10, 16};   // log2 of the cluster count
+constexpr int kSwizzleSweep[] = {0, 1, 2, 3, 4, 5, 6, 10, 16};  // log2 of the cluster count
 constexpr int kOffsetSweep[] = {0, 32, 64, 256, 1024, 8192};      // b's shift in floats; c gets twice this
 
 static_assert(kN % 4 == 0, "v2 needs n divisible by 4");

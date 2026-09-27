@@ -1,6 +1,6 @@
 # 01 · Vector add: experiments
 
-The full investigation behind the [summary](README.md): the model I built before measuring, every experiment with its hypothesis and prediction, what each one could and could not distinguish, and what went wrong. Format: [docs/experiment-format.md](../../docs/experiment-format.md).
+The full investigation behind the [summary](README.md): the model I built before measuring, every experiment with its hypothesis and prediction, what each one could and could not distinguish, and what went wrong. Format: [docs/experiment-format.md](../../docs/experiment-format.md) .
 
 > [TODO: every number below was produced by an earlier version of the harness, before the fixes
 > in this commit (clock sampling inside the timed region, convergence-based warm-up, true median,
