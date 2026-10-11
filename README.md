@@ -1,4 +1,4 @@
-# cuda-kernels
+# inference-kernels
 
 CUDA kernels for LLM inference, written from scratch and measured on a laptop GPU. For each one I try to explain why the number is what it is, and to write down exactly where the explanation stops.
 
